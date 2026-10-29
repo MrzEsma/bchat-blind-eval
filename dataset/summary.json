@@ -1,0 +1,48 @@
+{
+ "dataset_id": "bchat-blind-eval-120",
+ "derived_from": "B-Chat dynamic model-selection scenarios (120 cases)",
+ "case_count": 120,
+ "cohorts": {
+  "challenge": 24,
+  "representative": 96
+ },
+ "difficulty": {
+  "1": 8,
+  "2": 71,
+  "3": 17,
+  "4": 19,
+  "5": 5
+ },
+ "tags": {
+  "conciseness": 120,
+  "purchase_support": 120,
+  "tone": 120,
+  "multi_turn": 71,
+  "tool_arguments": 49,
+  "tool_call": 49,
+  "answer_from_context": 46,
+  "product_information": 40,
+  "inventory": 29,
+  "variant": 22,
+  "quoted_context": 12,
+  "clarification": 11,
+  "vendor_policy": 11,
+  "unsupported_claim": 10,
+  "delivery_time": 10,
+  "price": 8,
+  "order_status": 7,
+  "product_search": 7,
+  "shipping_cost": 6,
+  "escalation": 6,
+  "weight_dimensions": 4,
+  "abstention": 4,
+  "packaging_quantity": 2,
+  "tool_failure": 2,
+  "image": 1,
+  "agreement": 1,
+  "web_search": 1,
+  "general_knowledge": 1
+ },
+ "tool_fixture_cases": 109,
+ "anonymization": "vendor identities, contacts, links, discount codes, order ids and addresses replaced with synthetic data; every product/order id renumbered into a fake 900xxxxxx range; verbatim product titles and descriptions retained as public marketplace content; tool outputs frozen as fixtures — identical for every evaluated model"
+}

@@ -1,0 +1,107 @@
+{
+  "get_product_info": {
+    "description": "اطلاعات دقیق یک محصول خاص غرفه را برمی‌گرداند: نام، قیمت، موجودی و تنوع‌ها، زمان آماده‌سازی و توضیحات. product_id را از لینک ارسالی مشتری (basalam.com/p/<id>) یا تاریخچه گفتگو استخراج کن.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "product_id": {
+          "type": "integer",
+          "description": "شناسه عددی محصول در باسلام"
+        }
+      },
+      "required": ["product_id"]
+    }
+  },
+  "search_products_in_basalam": {
+    "description": "محصولات این غرفه را بر اساس یک توصیف متنی (کوئری) جست‌وجو می‌کند و فهرست نتایج با شناسه و نام محصول برمی‌گرداند. برای پیدا کردن مدل‌ها، قطعات جداگانه یا جایگزین‌های موجود در غرفه استفاده کن.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "عبارت جست‌وجو؛ باید با جزئیات کامل و مطابق نیاز مشتری ساخته شود"
+        }
+      },
+      "required": ["query"]
+    }
+  },
+  "get_similar_products": {
+    "description": "برای یک محصول ناموجود، محصولات مشابه قابل‌پیشنهاد همان غرفه را برمی‌گرداند.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "product_id": {
+          "type": "string",
+          "description": "شناسه محصول مبدا (ناموجود)"
+        }
+      },
+      "required": ["product_id"]
+    }
+  },
+  "google_search": {
+    "description": "جست‌وجوی وب برای اطلاعات عمومی (مقایسه انواع کالا، روش مصرف عمومی، ویژگی‌های کلی) یا تأیید مشخصات وبی یک محصول شرکتی دقیق. برای سؤال عمومی از scope=general و fact_kind=general_knowledge استفاده کن و فیلدهای محصول را نفرست. برای ادعای مشخصات یک محصول خاص فقط پس از get_product_info و فقط برای کالای شرکتی (shelf) با برند و مدل/کد دقیق از scope=specific_product استفاده کن. قیمت، موجودی و تنوع غرفه هرگز از گوگل گرفته نمی‌شوند.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "عبارت جست‌وجو"
+        },
+        "scope": {
+          "type": "string",
+          "enum": ["general", "specific_product"],
+          "description": "دامنه جست‌وجو: عمومی یا مخصوص یک محصول دقیق"
+        },
+        "fact_kind": {
+          "type": "string",
+          "enum": ["general_knowledge", "product_specification", "price", "inventory", "variants"],
+          "description": "نوع مدعا؛ برای price/inventory/variants جست‌وجوی گوگل انجام نمی‌شود"
+        },
+        "product_kind": {
+          "type": "string",
+          "enum": ["shelf", "non_shelf"],
+          "description": "فقط برای scope=specific_product: کالای شرکتی/قفسه‌ای یا غیرشرکتی (لباس، دست‌ساز، مواد غذایی غیرشرکتی)"
+        },
+        "product_id": {
+          "type": "integer",
+          "description": "شناسه همان محصول در باسلام (فقط مسیر specific_product)"
+        },
+        "product_brand": {
+          "type": "string",
+          "description": "برند دقیق محصول (فقط مسیر specific_product)"
+        },
+        "product_model_or_code": {
+          "type": "string",
+          "description": "مدل یا کد/بارکد دقیق محصول (فقط مسیر specific_product)"
+        }
+      },
+      "required": ["query", "scope", "fact_kind"]
+    }
+  },
+  "escalate_to_vendor": {
+    "description": "پیگیری داخلی ثبت می‌کند و گفتگو را برای رسیدگی به غرفه‌دار ارجاع می‌دهد. reason همیشه رشته‌ای واضح، کامل و فارسی است که مستقیماً برای غرفه‌دار ارسال می‌شود. موارد اصلی: اعلام پرداخت مشتری (order_payment_notification)، شکایت (complaint)، درخواست لغو سفارش (complaint)، سفارشی‌سازی (customization)، شکاف اطلاعات محصول (product_info_gap)، موضوعات ارسال (shipping_logistics)، شرایط فروش و پرداخت (sales_conditions)، درخواست ارتباط مستقیم (direct_contact)، خطای ابزار (error).",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "reason": {
+          "type": "string",
+          "description": "دلیل دقیق و کامل ارجاع به فارسی؛ مستقیماً برای غرفه‌دار ارسال می‌شود"
+        },
+        "label": {
+          "type": "string",
+          "enum": ["product_info_gap", "customization", "product_sourcing_request", "variant_availability_info", "shipping_logistics", "order_payment_notification", "sales_conditions", "complaint", "direct_contact", "error"],
+          "description": "دسته‌بندی موضوع ارجاع"
+        }
+      },
+      "required": ["reason", "label"]
+    }
+  },
+  "get_customer_order_status": {
+    "description": "وضعیت و زمان تقریبی سفارش‌های اخیر همین مشتری در این غرفه را می‌خواند. وقتی مشتری درباره پیگیری سفارش، مرحله آماده‌سازی، ارسال یا زمان رسیدن می‌پرسد استفاده کن. اگر داده‌ای برنگردد، موضوع را به غرفه‌دار ارجاع بده و از خودت تخمین نساز.",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "required": []
+    }
+  }
+}
