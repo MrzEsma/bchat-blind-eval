@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """Preflight check for the two models of a blind evaluation.
 
-For each configured model (OpenAI-compatible /chat/completions endpoint):
-  1. connectivity   — a tiny completion succeeds and returns usage stats
-  2. function calls — the model emits a real tool_call when a tool is offered
-  3. tool roundtrip — after feeding the tool result back, a final answer comes
+For each configured model (OpenAI-compatible /chat/completions endpoint),
+four checks, all must pass:
+  1. connectivity   — a tiny completion succeeds with the configured key
+  2. usage stats    — the response reports prompt/completion token counts
+                      (without them the report cannot compute cost)
+  3. function calls — the model emits a real tool_call when a tool is offered
+  4. tool roundtrip — after feeding the tool result back, a final answer comes
 Usage/latency are measured because the final report needs them for costs.
 
 Config file (see SKILL.md):
@@ -21,6 +24,7 @@ Exit code 0 iff both models pass everything.
 """
 from __future__ import annotations
 
+import http.client
 import json
 import os
 import sys
@@ -67,14 +71,35 @@ def chat(spec: dict, key: str, messages: list, tools=None, max_tokens=800,
         url, data=json.dumps(body).encode(),
         headers={"Content-Type": "application/json",
                  "Authorization": f"Bearer {key}"})
-    t0 = time.time()
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            data = json.loads(resp.read())
-    except urllib.error.HTTPError as e:
-        detail = e.read()[:300].decode(errors="replace")
-        raise RuntimeError(f"HTTP {e.code}: {detail}") from e
-    return data, (time.time() - t0) * 1000.0
+    # free-tier endpoints often answer 429 for a moment; one blip must not
+    # fail the preflight, so retry with backoff (honoring Retry-After)
+    for attempt in range(5):
+        t0 = time.time()
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                data = json.loads(resp.read())
+            return data, (time.time() - t0) * 1000.0
+        except urllib.error.HTTPError as e:
+            detail = e.read()[:300].decode(errors="replace")
+            if e.code in (408, 429, 500, 502, 503, 504) and attempt < 4:
+                wait = e.headers.get("Retry-After")
+                try:
+                    wait = min(float(wait), 60) if wait else 5 * 2 ** attempt
+                except ValueError:
+                    wait = 5 * 2 ** attempt
+                print(f"    (HTTP {e.code}, retrying in {wait:.0f}s)",
+                      flush=True)
+                time.sleep(wait)
+                continue
+            raise RuntimeError(f"HTTP {e.code}: {detail}") from e
+        except (OSError, http.client.HTTPException, ValueError) as e:
+            # connection refused/reset, timeouts, truncated or non-JSON body
+            if attempt == 4:
+                raise RuntimeError(f"{type(e).__name__}: {e}") from e
+            wait = 5 * 2 ** attempt
+            print(f"    ({type(e).__name__}, retrying in {wait}s)", flush=True)
+            time.sleep(wait)
+    raise RuntimeError("unreachable")
 
 
 def check_model(spec: dict) -> dict:
@@ -91,8 +116,9 @@ def check_model(spec: dict) -> dict:
         out["checks"]["connectivity"] = f"ok ({ms:.0f} ms)"
         out["usage_fields"] = sorted(k for k, v in usage.items()
                                      if isinstance(v, int))
-        for need in ("prompt_tokens", "completion_tokens"):
-            if need not in usage and need.replace("prompt", "input") not in usage:
+        for need, alt in (("prompt_tokens", "input_tokens"),
+                          ("completion_tokens", "output_tokens")):
+            if need not in usage and alt not in usage:
                 out["checks"]["usage_stats"] = (
                     f"MISSING ({need}) — costs cannot be computed")
                 out["ok"] = False
@@ -145,6 +171,9 @@ def check_model(spec: dict) -> dict:
 
 
 def main() -> int:
+    if len(sys.argv) > 1 and sys.argv[1] in ("-h", "--help"):
+        print(__doc__)
+        return 0
     cfg_path = sys.argv[1] if len(sys.argv) > 1 else os.path.join(
         HERE, "..", "models.json")
     cfg = json.load(open(cfg_path))

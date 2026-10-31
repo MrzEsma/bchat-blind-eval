@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Unblind a finished run and write the final evaluation report.
 
-  python3 report.py --run runs/myrun
+  python3 report.py --run runs/myrun [--config models.json]
 
 Reads results.jsonl, votes.jsonl and (only now) blinding.json, then writes
 runs/<run>/report.md with:
@@ -9,7 +9,9 @@ runs/<run>/report.md with:
   - per-topic (tag) win rates -> each model's strengths and weaknesses
   - per-difficulty and per-cohort breakdown
   - token usage and cost per model (needs prices in models.json)
-  - latency, tool-call and escalation stats, failures
+  - latency, tool-call and escalation stats, empty replies, failures
+Model labels/prices come from runs/<run>/run_config.json (written by
+run_eval.py, no keys) unless --config is given.
 """
 from __future__ import annotations
 
@@ -29,11 +31,19 @@ def pct(n, d):
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--run", required=True)
+    ap.add_argument("--config", default="",
+                    help="models.json (default: <run>/run_config.json)")
+    ap.add_argument("--allow-partial", action="store_true",
+                    help="unblind even though some cases have no verdict")
     args = ap.parse_args()
     run = args.run
 
-    cfg_path = os.path.join(ROOT, "models.json")
-    cfg = json.load(open(cfg_path)) if os.path.exists(cfg_path) else {}
+    cfg_path = args.config or os.path.join(run, "run_config.json")
+    if not os.path.exists(cfg_path):
+        cfg_path = os.path.join(ROOT, "models.json")
+    if not os.path.exists(cfg_path):
+        raise SystemExit("no model config found: pass --config models.json")
+    cfg = json.load(open(cfg_path))
 
     def lines(p):
         if not os.path.exists(p):
@@ -46,6 +56,16 @@ def main() -> int:
                 pass
         return out
 
+    meta_path = os.path.join(run, "run_meta.json")
+    if os.path.exists(meta_path):
+        import hashlib
+        want = json.load(open(meta_path)).get("dataset_sha256_16")
+        have = hashlib.sha256(open(os.path.join(
+            ROOT, "dataset", "cases.jsonl"), "rb").read()).hexdigest()[:16]
+        if want and want != have:
+            print("WARNING: dataset/cases.jsonl changed since this run was "
+                  "made; conversations shown may differ from what the models "
+                  "saw")
     results = lines(os.path.join(run, "results.jsonl"))
     votes = {v["case_id"]: v for v in lines(os.path.join(run, "votes.jsonl"))}
     blind = json.load(open(os.path.join(run, "blinding.json")))["A"]
@@ -59,9 +79,22 @@ def main() -> int:
     for r in results:
         if r.get("status") == "completed":
             recs[(r["case_id"], r["variant"])] = r
-    completed = sorted({cid for cid, _ in recs})
+    completed = sorted({cid for cid, v in recs if v == "A"
+                        and (cid, "B") in recs and cid in cases})
+    unknown = sorted({cid for cid, _ in recs if cid not in cases})
+    if unknown:
+        print(f"WARNING: {len(unknown)} result ids are not in the dataset "
+              f"(e.g. {unknown[0]}); ignored")
     judged = [c for c in completed if c in votes]
     unjudged = [c for c in completed if c not in votes]
+
+    not_run = [c for c in cases if c not in completed]
+    if (unjudged or not_run) and not args.allow_partial:
+        raise SystemExit(
+            f"run is not finished: {len(not_run)} of {len(cases)} cases not "
+            f"run yet, {len(unjudged)} run but not judged. The report "
+            "unblinds the run, so it waits until every case is run and "
+            "judged (or pass --allow-partial).")
 
     name = {"base": cfg.get("base", {}).get("label", "base"),
             "candidate": cfg.get("candidate", {}).get("label", "candidate")}
@@ -80,7 +113,6 @@ def main() -> int:
         b_owner = "candidate" if a_owner == "base" else "base"
         if v == "a_better":
             wins[a_owner] += 1
-            tag_decided_per = a_owner
         elif v == "b_better":
             wins[b_owner] += 1
         else:
@@ -92,8 +124,10 @@ def main() -> int:
                 tag_decided[tag] += 1
                 winner = a_owner if v == "a_better" else b_owner
                 tag_wins[tag][winner] += 1
-        d = cases[cid]["difficulty"]
-        diff_stats[d][v] += 1
+        winner = (a_owner if v == "a_better" else
+                  b_owner if v == "b_better" else v)
+        diff_stats[f"difficulty {cases[cid]['difficulty']}"][winner] += 1
+        diff_stats[f"cohort {cases[cid]['cohort']}"][winner] += 1
 
     # ---- usage / cost / latency / tools ----
     stats = {}
@@ -105,7 +139,11 @@ def main() -> int:
         lat = []
         ntools = 0
         nesc = 0
+        nempty = 0
         for r in rs:
+            for fl in r.get("reply_flags") or []:
+                if "empty_reply" in fl or "no_final_reply" in fl:
+                    nempty += 1
             for k, val in (r.get("usage") or {}).items():
                 usage[k] += val
             lat.append(r.get("latency_ms") or 0)
@@ -121,16 +159,20 @@ def main() -> int:
             cost = (usage["input"] / 1e6) * float(price[side]["input"]) + \
                    (usage["output"] / 1e6) * float(price[side]["output"])
         stats[side] = {"n": len(rs), "usage": dict(usage), "p50": p50,
-                       "p95": p95, "tools": ntools, "esc": nesc, "cost": cost}
+                       "p95": p95, "tools": ntools, "esc": nesc, "cost": cost,
+                       "empty": nempty}
 
-    failed = [r for r in results if r.get("status") == "failed"]
+    # a case that failed once and later completed is not a failure
+    failed = [r for r in results if r.get("status") == "failed"
+              and r["case_id"] not in completed]
 
     # ---- report ----
     o = []
     a = o.append
-    a(f"# گزارش ارزیابی کور — {run}")
+    a(f"# گزارش ارزیابی کور — {os.path.basename(os.path.normpath(run))}")
     a("")
-    a(f"- تعداد پرونده‌ها: {len(completed)} (قضاوت‌شده: {len(judged)}"
+    a(f"- پرونده‌ها: {len(completed)} از {len(cases)} اجرا شده "
+      f"(قضاوت‌شده: {len(judged)}"
       + (f"، بدون قضاوت: {len(unjudged)}" if unjudged else "") + ")")
     a(f"- مدل پایه: **{name['base']}** | مدل کاندید: **{name['candidate']}**")
     a("")
@@ -180,6 +222,16 @@ def main() -> int:
         a(f"| {tag} | {tag_decided[tag]} | {w['base']} | {w['candidate']} |")
     a("")
 
+    a("## به تفکیک سختی و دسته")
+    a("")
+    a(f"| گروه | برد {name['base']} | برد {name['candidate']} | both_good | both_bad |")
+    a("|---|---|---|---|---|")
+    for g in sorted(diff_stats):
+        d = diff_stats[g]
+        a(f"| {g} | {d['base']} | {d['candidate']} | {d['both_good']} "
+          f"| {d['both_bad']} |")
+    a("")
+
     a("## هزینه و مصرف")
     a("")
     a("| مدل | توکن ورودی | توکن خروجی | کش‌شده | هزینه (دلار) |")
@@ -194,12 +246,13 @@ def main() -> int:
 
     a("## سرعت و ابزارها")
     a("")
-    a("| مدل | تأخیر میانه (ثانیه) | تأخیر ۹۵٪ | فراخوانی ابزار | ارجاع به غرفه‌دار |")
-    a("|---|---|---|---|---|")
+    a("| مدل | تأخیر میانه (ثانیه) | تأخیر ۹۵٪ | فراخوانی ابزار "
+      "| ارجاع به غرفه‌دار | پاسخ خالی |")
+    a("|---|---|---|---|---|---|")
     for s in ("base", "candidate"):
         st = stats[s]
         a(f"| {name[s]} | {st['p50'] / 1000:.1f} | {st['p95'] / 1000:.1f} "
-          f"| {st['tools']} | {st['esc']} |")
+          f"| {st['tools']} | {st['esc']} | {st['empty']} |")
     a("")
     if failed:
         a(f"## خطاها")

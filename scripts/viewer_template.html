@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!--FRAGMENT-START-->
+<title>Blind Eval Viewer</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: case rail on the right (RTL), case reader on the left; two answer columns stack on phones */
+:root {
+  --bg: #f3f5f4; --panel: #ffffff; --ink: #17201d; --muted: #5d6b66; --line: #d9e0dd;
+  --soft: #e8eeeb; --accent: #0f6b5c;
+  --base: #3d4fb8; --base-soft: #e7eafb; --cand: #b4560f; --cand-soft: #fbeee2;
+  --good: #23784a; --bad: #b3261e; --warn: #9a6a00; --warn-soft: #fff4d6;
+  --shop: #e3efe9; --cust: #ffffff;
+  --f-body: "Vazirmatn", "Tahoma", "Segoe UI", sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111715; --panel: #18201d; --ink: #e4ece8; --muted: #93a39d; --line: #2b3632;
+    --soft: #1f2a26; --accent: #4cc3a8;
+    --base: #9aa8ff; --base-soft: #232a4d; --cand: #f0a465; --cand-soft: #3b2818;
+    --good: #5fd08f; --bad: #ff8a80; --warn: #f2c14e; --warn-soft: #3a2f12;
+    --shop: #1f3029; --cust: #1b2421; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111715; --panel: #18201d; --ink: #e4ece8; --muted: #93a39d; --line: #2b3632;
+  --soft: #1f2a26; --accent: #4cc3a8;
+  --base: #9aa8ff; --base-soft: #232a4d; --cand: #f0a465; --cand-soft: #3b2818;
+  --good: #5fd08f; --bad: #ff8a80; --warn: #f2c14e; --warn-soft: #3a2f12;
+  --shop: #1f3029; --cust: #1b2421; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.75; margin: 0; }
+.wrap { padding-inline: 16px; padding-block: 16px 40px; max-width: 1400px; margin: 0 auto; }
+header.top { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: end; justify-content: space-between; padding-block: 8px 16px; border-bottom: 1px solid var(--line); }
+h1 { font-size: 1.35rem; font-weight: 800; margin: 0; text-wrap: balance; }
+.sub { color: var(--muted); font-size: .85rem; }
+.score { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-variant-numeric: tabular-nums; }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 999px; font-size: .8rem; font-weight: 600; background: var(--soft); color: var(--ink); max-width: 100%; overflow-wrap: anywhere; }
+.pill.base { background: var(--base-soft); color: var(--base); }
+.pill.cand { background: var(--cand-soft); color: var(--cand); }
+.pill.good { color: var(--good); }
+.pill.bad { color: var(--bad); }
+.pill.warn { background: var(--warn-soft); color: var(--warn); }
+.layout { display: grid; grid-template-columns: 290px minmax(0, 1fr); gap: 20px; margin-top: 16px; }
+@media (max-width: 860px) { .layout { grid-template-columns: minmax(0, 1fr); } .rail { position: static; max-height: 280px; } }
+.rail { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; display: flex; flex-direction: column; max-height: calc(100vh - 140px); position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px); }
+.filters { display: grid; gap: 8px; padding: 12px; border-bottom: 1px solid var(--line); }
+.filters input, .filters select { width: 100%; font: inherit; font-size: .85rem; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink); }
+.toggle { display: flex; align-items: center; gap: 8px; font-size: .85rem; cursor: pointer; }
+.list { overflow-y: auto; padding: 4px; }
+.item { display: flex; justify-content: space-between; align-items: center; gap: 8px; width: 100%; text-align: right; background: none; border: 0; color: inherit; font: inherit; font-size: .85rem; padding: 6px 8px; border-radius: 6px; cursor: pointer; }
+.item:hover { background: var(--soft); }
+.item[aria-current="true"] { background: var(--soft); outline: 2px solid var(--accent); outline-offset: -2px; }
+.item .id { font-family: var(--f-mono); font-size: .78rem; direction: ltr; }
+.dot { width: 10px; height: 10px; border-radius: 50%; flex: none; background: var(--line); }
+.dot.base { background: var(--base); } .dot.candidate { background: var(--cand); }
+.dot.both_good { background: var(--good); } .dot.both_bad { background: var(--bad); }
+.count { padding: 6px 12px; font-size: .78rem; color: var(--muted); border-top: 1px solid var(--line); }
+main { min-width: 0; display: grid; gap: 16px; align-content: start; }
+.casehead { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; }
+.casehead h2 { margin: 0; font-size: 1.1rem; font-family: var(--f-mono); direction: ltr; }
+.nav { display: flex; gap: 8px; }
+button.btn { font: inherit; font-size: .85rem; padding: 6px 14px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; }
+button.btn:hover { border-color: var(--accent); }
+button:focus-visible, .item:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag { font-size: .72rem; padding: 1px 8px; border-radius: 4px; background: var(--soft); color: var(--muted); font-family: var(--f-mono); direction: ltr; }
+section.box { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; min-width: 0; }
+.label { font-size: .72rem; letter-spacing: .06em; color: var(--muted); font-weight: 700; margin-bottom: 8px; }
+.thread { display: grid; gap: 8px; }
+.msg { max-width: 85%; padding: 8px 12px; border-radius: 10px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: .92rem; }
+.msg.customer { background: var(--cust); border: 1px solid var(--line); justify-self: start; }
+.msg.shop { background: var(--shop); justify-self: end; }
+.msg.new { border: 2px solid var(--accent); }
+.who { display: block; font-size: .7rem; color: var(--muted); font-weight: 700; }
+.answers { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+@media (max-width: 760px) { .answers { grid-template-columns: minmax(0, 1fr); } }
+.ans { border-top: 4px solid var(--line); }
+.ans.base { border-top-color: var(--base); }
+.ans.candidate { border-top-color: var(--cand); }
+.ans.hidden-owner { border-top-color: var(--muted); }
+.ans h3 { margin: 0 0 4px; font-size: 1rem; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ans .model { font-family: var(--f-mono); font-size: .72rem; color: var(--muted); direction: ltr; text-align: left; overflow-wrap: anywhere; }
+.reply { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--bg); border-radius: 8px; padding: 10px 12px; margin-top: 8px; }
+.reply.empty { background: var(--warn-soft); color: var(--warn); font-weight: 600; }
+.meta { font-size: .78rem; color: var(--muted); font-variant-numeric: tabular-nums; margin-top: 8px; }
+details.tool { margin-top: 8px; border: 1px solid var(--line); border-radius: 8px; }
+details.tool summary { cursor: pointer; padding: 6px 10px; font-family: var(--f-mono); font-size: .78rem; direction: ltr; text-align: left; overflow-wrap: anywhere; }
+details.tool pre, pre.kb { margin: 0; padding: 8px 10px; white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--f-body); font-size: .82rem; border-top: 1px solid var(--line); max-height: 360px; overflow-y: auto; }
+pre.kb { border: 0; max-height: 480px; }
+.verdict { display: grid; gap: 6px; }
+.verdict .line { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.pick { display: flex; flex-wrap: wrap; gap: 8px; }
+.pick button[aria-pressed="true"] { background: var(--accent); color: var(--panel); border-color: var(--accent); }
+.note { font-size: .8rem; color: var(--muted); }
+@media (prefers-reduced-motion: no-preference) { .item, button.btn { transition: background .15s, border-color .15s; } }
+</style>
+
+<div class="wrap" dir="rtl" lang="fa">
+  <header class="top">
+    <div>
+      <h1 id="title">مقایسهٔ پاسخ‌ها</h1>
+      <div class="sub" id="subtitle"></div>
+    </div>
+    <div class="score" id="score"></div>
+  </header>
+
+  <div class="layout">
+    <aside class="rail" aria-label="فهرست پرونده‌ها">
+      <div class="filters">
+        <input id="q" type="search" placeholder="جست‌وجو در متن گفتگو و پاسخ‌ها">
+        <select id="fwin" aria-label="فیلتر بر اساس رأی">
+          <option value="">همهٔ رأی‌ها</option>
+          <option value="base"></option>
+          <option value="candidate"></option>
+          <option value="both_good">هر دو خوب</option>
+          <option value="both_bad">هر دو بد</option>
+          <option value="empty">پاسخ خالی دارد</option>
+          <option value="disagree">رأی من ≠ رأی داور</option>
+        </select>
+        <select id="ftag" aria-label="فیلتر موضوع"><option value="">همهٔ موضوع‌ها</option></select>
+        <label class="toggle"><input id="blindmode" type="checkbox"> حالت کور (اسم مدل‌ها مخفی تا رأی بدهید)</label>
+      </div>
+      <div class="list" id="list"></div>
+      <div class="count" id="count"></div>
+    </aside>
+
+    <main id="main"></main>
+  </div>
+</div>
+
+<script id="data" type="application/json">__DATA__</script>
+<script>
+(function () {
+  const D = JSON.parse(document.getElementById("data").textContent);
+  const N = D.names, cases = D.cases;
+  const KEY = "bbe-picks:" + D.run;
+  let picks = {};
+  try { picks = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { picks = {}; }
+  const savePicks = () => { try { localStorage.setItem(KEY, JSON.stringify(picks)); } catch (e) {} };
+  let blindMode = false;
+  try { blindMode = localStorage.getItem("bbe-blind") === "1"; } catch (e) {}
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const fa = (n) => Number(n || 0).toLocaleString("fa-IR");
+  const isEmpty = (c) => Object.values(c.sides).some((s) => (s.flags || []).some((f) => f.includes("empty_reply") || f.includes("no_final_reply")));
+  const winLabel = (w) => w === "base" ? N.base : w === "candidate" ? N.candidate : w === "both_good" ? "هر دو خوب" : w === "both_bad" ? "هر دو بد" : "بدون رأی";
+  // stable per-case shuffle for blind mode, so the left/right order is not always base-first
+  const flip = (id) => { let h = 0; for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return h % 2 === 1; };
+
+  $("title").textContent = N.base + " در برابر " + N.candidate;
+  $("subtitle").textContent = cases.length.toLocaleString("fa-IR") + " پرونده · " + (D.models.base || "") + " / " + (D.models.candidate || "");
+  $("fwin").options[1].textContent = "برندهٔ داور: " + N.base;
+  $("fwin").options[2].textContent = "برندهٔ داور: " + N.candidate;
+  $("blindmode").checked = blindMode;
+  const tags = [...new Set(cases.flatMap((c) => c.tags))].sort();
+  for (const t of tags) { const o = document.createElement("option"); o.value = t; o.textContent = t; $("ftag").appendChild(o); }
+
+  function score() {
+    const j = { base: 0, candidate: 0, both_good: 0, both_bad: 0 }, m = { base: 0, candidate: 0, both_good: 0, both_bad: 0 };
+    let mine = 0, agree = 0;
+    for (const c of cases) {
+      if (c.winner) j[c.winner]++;
+      const p = picks[c.id];
+      if (p) { m[p]++; mine++; if (p === c.winner) agree++; }
+    }
+    let h = '<span class="pill">داور:</span>' +
+      '<span class="pill base">' + esc(N.base) + " " + fa(j.base) + "</span>" +
+      '<span class="pill cand">' + esc(N.candidate) + " " + fa(j.candidate) + "</span>" +
+      '<span class="pill good">هر دو خوب ' + fa(j.both_good) + "</span>" +
+      '<span class="pill bad">هر دو بد ' + fa(j.both_bad) + "</span>";
+    if (mine) {
+      h += '<span class="pill">رأی شما (' + fa(mine) + "):</span>" +
+        '<span class="pill base">' + esc(N.base) + " " + fa(m.base) + "</span>" +
+        '<span class="pill cand">' + esc(N.candidate) + " " + fa(m.candidate) + "</span>" +
+        '<span class="pill">هم‌نظر با داور ' + fa(agree) + " از " + fa(mine) + "</span>";
+    }
+    $("score").innerHTML = h;
+  }
+
+  let current = cases.length ? cases[0].id : null;
+  try { const h = location.hash.slice(1); if (cases.some((c) => c.id === h)) current = h; } catch (e) {}
+
+  function filtered() {
+    const q = $("q").value.trim(), w = $("fwin").value, t = $("ftag").value;
+    return cases.filter((c) => {
+      if (t && !c.tags.includes(t)) return false;
+      if (w === "empty" && !isEmpty(c)) return false;
+      if (w === "disagree" && !(picks[c.id] && picks[c.id] !== c.winner)) return false;
+      if (w && !["empty", "disagree"].includes(w) && c.winner !== w) return false;
+      if (q) {
+        const hay = [c.id, ...c.turns, ...c.history.map((m) => m.text), ...Object.values(c.sides).flatMap((s) => s.replies)].join("\n");
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }
+
+  function renderList() {
+    const fs = filtered();
+    $("list").innerHTML = fs.map((c) => {
+      const hide = blindMode && !picks[c.id];
+      const dotCls = hide ? "" : (c.winner || "");
+      return '<button class="item" data-id="' + esc(c.id) + '" aria-current="' + (c.id === current) + '">' +
+        '<span class="id">' + esc(c.id) + "</span>" +
+        '<span style="display:flex;gap:6px;align-items:center">' + (isEmpty(c) ? '<span class="pill warn">خالی</span>' : "") +
+        (picks[c.id] ? '<span class="pill">✓</span>' : "") + '<span class="dot ' + dotCls + '"></span></span></button>';
+    }).join("");
+    $("count").textContent = fa(fs.length) + " از " + fa(cases.length) + " پرونده";
+  }
+
+  function sideCard(c, owner, slot) {
+    const s = c.sides[owner];
+    const hide = blindMode && !picks[c.id];
+    const title = hide ? "پاسخ " + slot : esc(N[owner]);
+    const cls = hide ? "hidden-owner" : owner;
+    if (!s) return '<section class="box ans ' + cls + '"><h3>' + title + "</h3><p>اجرا نشده</p></section>";
+    let h = '<section class="box ans ' + cls + '"><h3>' + title +
+      (!hide && c.winner === owner ? '<span class="pill good">برندهٔ داور</span>' : "") + "</h3>";
+    if (!hide) h += '<div class="model">' + esc(D.models[owner] || "") + "</div>";
+    s.replies.forEach((r, i) => {
+      const fl = (s.flags || [])[i] || [];
+      const empty = fl.includes("empty_reply") || fl.includes("no_final_reply");
+      const turnTools = s.tools.filter((t) => (t.turn || 0) === i);
+      for (const t of turnTools) {
+        h += '<details class="tool"><summary>🔧 ' + esc(t.tool) + "(" + esc(JSON.stringify(t.args)) + ')</summary><pre>' + esc(t.result) + "</pre></details>";
+      }
+      if (c.turns.length > 1) h += '<div class="meta">جواب به پیام ' + fa(i + 1) + "</div>";
+      h += '<div class="reply' + (empty ? " empty" : "") + '">' + esc(r) + "</div>";
+      if (fl.length && !empty) h += '<div class="meta">⚠ ' + esc(fl.join("، ")) + "</div>";
+    });
+    const u = s.usage || {};
+    if (!hide) h += '<div class="meta">زمان ' + (s.latency_ms / 1000).toLocaleString("fa-IR", { maximumFractionDigits: 1 }) + " ثانیه · ابزار " + fa(s.tools.length) + " · توکن ورودی " + fa(u.input) + " · خروجی " + fa(u.output) + "</div>";
+    return h + "</section>";
+  }
+
+  function render() {
+    const c = cases.find((x) => x.id === current);
+    if (!c) { $("main").innerHTML = '<section class="box">پرونده‌ای با این فیلتر نیست.</section>'; return; }
+    const order = blindMode && flip(c.id) ? ["candidate", "base"] : ["base", "candidate"];
+    const hide = blindMode && !picks[c.id];
+    let h = '<div class="casehead"><div><h2>' + esc(c.id) + '</h2><div class="tags">' +
+      c.tags.map((t) => '<span class="tag">' + esc(t) + "</span>").join("") +
+      '</div></div><div class="nav"><button class="btn" id="prev">← قبلی</button><button class="btn" id="next">بعدی →</button></div></div>';
+    h += '<section class="box"><div class="label">گفتگو · شهر مشتری: ' + esc(c.city) + " · سختی " + fa(c.difficulty) + '</div><div class="thread">';
+    for (const m of c.history) h += '<div class="msg ' + m.who + '"><span class="who">' + (m.who === "shop" ? "غرفه" : "مشتری") + "</span>" + esc(m.text) + "</div>";
+    c.turns.forEach((t, i) => { h += '<div class="msg customer new"><span class="who">پیام تازهٔ مشتری' + (c.turns.length > 1 ? " " + fa(i + 1) : "") + "</span>" + esc(t) + "</div>"; });
+    h += "</div></section>";
+    h += '<div class="answers">' + sideCard(c, order[0], "۱") + sideCard(c, order[1], "۲") + "</div>";
+    h += '<section class="box verdict"><div class="label">رأی شما</div><div class="pick">';
+    const opts = hide
+      ? [[order[0], "پاسخ ۱ بهتر است"], [order[1], "پاسخ ۲ بهتر است"], ["both_good", "هر دو خوب"], ["both_bad", "هر دو بد"]]
+      : [["base", N.base + " بهتر است"], ["candidate", N.candidate + " بهتر است"], ["both_good", "هر دو خوب"], ["both_bad", "هر دو بد"]];
+    for (const [v, l] of opts) h += '<button class="btn" data-pick="' + v + '" aria-pressed="' + (picks[c.id] === v) + '">' + esc(l) + "</button>";
+    h += "</div>";
+    if (hide) h += '<div class="note">در حالت کور، رأی داور و اسم مدل‌ها بعد از رأی شما نشان داده می‌شود.</div>';
+    else h += '<div class="line"><span class="pill">رأی داور: ' + esc(winLabel(c.winner)) + "</span>" +
+      (picks[c.id] ? (picks[c.id] === c.winner ? '<span class="pill good">با داور هم‌نظرید</span>' : '<span class="pill bad">با داور مخالفید</span>') : "") +
+      "</div><div>" + esc(c.reason || "") + "</div>" +
+      '<div class="note">رأی‌های شما فقط در همین مرورگر می‌ماند.</div>';
+    h += "</section>";
+    h += '<section class="box"><details><summary class="label" style="cursor:pointer">دانش پایهٔ غرفه (همان چیزی که مدل‌ها دیدند)</summary><pre class="kb">' + esc(c.kb) + "</pre></details></section>";
+    $("main").innerHTML = h;
+    $("prev").onclick = () => step(-1);
+    $("next").onclick = () => step(1);
+    for (const b of document.querySelectorAll("[data-pick]")) b.onclick = () => {
+      const v = b.getAttribute("data-pick");
+      if (picks[c.id] === v) delete picks[c.id]; else picks[c.id] = v;
+      savePicks(); score(); renderList(); render();
+    };
+  }
+
+  function step(d) {
+    const fs = filtered();
+    let i = fs.findIndex((c) => c.id === current);
+    i = Math.min(fs.length - 1, Math.max(0, i + d));
+    if (fs[i]) select(fs[i].id);
+  }
+  function select(id) {
+    current = id;
+    try { history.replaceState(null, "", "#" + id); } catch (e) {}
+    renderList(); render(); window.scrollTo({ top: 0 });
+  }
+
+  $("list").addEventListener("click", (e) => { const b = e.target.closest(".item"); if (b) select(b.dataset.id); });
+  for (const id of ["q", "fwin", "ftag"]) $(id).addEventListener("input", () => {
+    renderList();
+    const fs = filtered();
+    if (fs.length && !fs.some((c) => c.id === current)) select(fs[0].id);
+  });
+  function syncBlindFilters() {
+    // judge-based filters would reveal the winner, so they are off in blind mode
+    for (const o of $("fwin").options) if (["base", "candidate", "both_good", "both_bad", "disagree"].includes(o.value)) o.disabled = blindMode;
+    if (blindMode && $("fwin").selectedOptions[0].disabled) $("fwin").value = "";
+    $("score").hidden = blindMode;
+  }
+  $("blindmode").addEventListener("change", (e) => {
+    blindMode = e.target.checked;
+    syncBlindFilters();
+    try { localStorage.setItem("bbe-blind", blindMode ? "1" : "0"); } catch (err) {}
+    renderList(); render();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.target.matches("input, select, textarea")) return;
+    if (e.key === "ArrowLeft") step(1);
+    if (e.key === "ArrowRight") step(-1);
+  });
+  syncBlindFilters(); score(); renderList(); render();
+})();
+</script>
+<!--FRAGMENT-END-->
+</html>
