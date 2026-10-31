@@ -1,3 +1,9 @@
+---
+license: mit
+language: fa
+pretty_name: B-Chat Blind Eval (120-case Persian vendor-chat A/B)
+---
+
 # B-Chat Blind Eval — 120-case Persian vendor-chat model evaluation
 
 A self-contained kit for **blind A/B comparison of two LLMs** on realistic
