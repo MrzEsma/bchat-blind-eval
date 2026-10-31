@@ -268,9 +268,10 @@ def customer_message(m):
         parts.append("(مشتری یک تصویر ارسال کرده است)")
     q = m.get("quoted_message")
     if q:
+        user_part = body.strip() or "(متنی ندارد؛ فقط پیام بالا را نقل کرده است)"
         body = (f"پیام کاربر در پاسخ به پیام نقل‌قول‌شده‌ی زیر است. "
                 f"نقش پیام نقل‌قول‌شده: {q.get('role', 'assistant')}\n\n"
-                f"> {q.get('content', '')}\n\nپیام کاربر:\n{body}")
+                f"> {q.get('content', '')}\n\nپیام کاربر:\n{user_part}")
     parts.append(body.strip())
     return "\n".join(p for p in parts if p.strip())
 
@@ -509,8 +510,8 @@ def judge_view(case, a, b):
             note = (f"  ⚠ {', '.join(flags[j])}" if j < len(flags) and flags[j]
                     else "")
             lines.append(f"{side}[reply {j}]{note} {r}")
-    lines += ["", "## VERDICT: a_better | b_better | both_good | both_bad",
-              "## REASON (short Persian):", "",
+    lines += ["",
+              "<!-- رأی را با vote.py ثبت کن؛ این فایل را ویرایش نکن -->",
               "---", "## VENDOR KNOWLEDGE BASE (reference for policy checks)",
               case["vendor"]["knowledge_base"]]
     return "\n".join(lines)

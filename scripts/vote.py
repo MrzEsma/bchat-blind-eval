@@ -16,6 +16,7 @@ import json
 import os
 import re
 import sys
+import time
 
 VERDICTS = {"a_better", "b_better", "both_good", "both_bad"}
 # Persian/Arabic, Latin, digits, punctuation, quotes and ZWNJ are fine; any
@@ -62,7 +63,25 @@ def main() -> int:
 
     if args.pending or not args.case:
         todo = [c for c in completed if c not in voted]
-        print(f"voted {len(voted)}/{len(completed)}; pending: {len(todo)}")
+        total = 0
+        dpath = os.path.join(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__))), "dataset", "cases.jsonl")
+        if os.path.exists(dpath):
+            total = sum(1 for l in open(dpath, encoding="utf-8")
+                        if l.strip())
+        print(f"voted {len(voted)}/{len(completed)} generated; "
+              f"pending: {len(todo)}"
+              + (f"; dataset total: {total}, "
+                 f"not generated yet: {total - len(completed)}" if total else ""))
+        jdir = os.path.join(args.run, "judge")
+        if os.path.isdir(jdir):
+            files = [os.path.getmtime(os.path.join(jdir, f))
+                     for f in os.listdir(jdir) if f.endswith(".md")]
+            if files:
+                age_min = (time.time() - max(files)) / 60
+                if age_min > 15:
+                    print(f"note: no new judge file for {age_min:.0f} min — "
+                          f"generation may be stalled or finished")
         for c in todo:
             print("  " + c)
         return 0
