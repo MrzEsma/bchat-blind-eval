@@ -86,9 +86,38 @@ only `judge/<case>.md` files, which are self-contained: the conversation as
 the models saw it, every tool call with its full result, both replies, and
 the vendor knowledge base.
 
+## نتیجهٔ بنچمارک
+
+A completed blind A/B run on this dataset (2026-11-01), judged by an
+independent blind GLM judge (agent) that never saw which model produced
+which reply.
+
+- پایه `z-ai/glm-5.3-flash` در برابر کاندید `nvidia/nemotron-3-ultra-550b-a55b:free`
+  (بزرگ‌ترین مدل چت رایگان OpenRouter) روی ۱۲۰ پروندهٔ همین دیتاست.
+- GLM بهتر: **55** — nemotron-ultra بهتر: **33** — بدون تفاوت معنادار
+  (both_good): **31** — هر دو ضعیف (both_bad): **1**.
+- میانهٔ تأخیر پاسخ: **10.6s** (GLM) در برابر **14.4s** (nemotron-ultra).
+- هزینهٔ کل سمت GLM: **$0.066**؛ سمت nemotron-ultra: **$0** (رایگان).
+- جمع‌بندی: بزرگ‌ترین مدل چت رایگان OpenRouter جایگزین GLM-5.3-flash به‌عنوان
+  مدل اصلی نمی‌شود، اما یک لایهٔ رایگان معتبر است — برد یا تساوی در **64 از
+  120** پرونده.
+
+این اجرا پیش از اصلاح فیکسچرهای همین نسخهٔ دیتاست انجام شده است.
+
 ## Dataset versions
 
-- **v2 (current)** — fixes an anonymization bug in v1: synthetic codenames had
+- **v3 (current)** — consistency fixes from a completed 120-case blind run
+  (2026-11-01): `get_similar_products` no-found fixtures no longer open with
+  the contradictory line «محصول مشابهی یافت» and now agree with
+  `get_product_info` on whether a product id exists; a scripted invoice-builder
+  turn that violated its own vendor KB was aligned with the KB; unresolved
+  `[آدرس نمونه]`/`[لینک نمونه]` placeholders and a dangling «س» in scripted
+  messages were replaced with natural text; vendor-city headers now match the
+  shipping-rules city, and `customer_city` headers match the customer's stated
+  city. Case count, ids, tags and cohorts unchanged (lint: 120 cases,
+  0 problems). Run configs recorded against v2 will report a dataset hash
+  mismatch — expected.
+- **v2** — fixes an anonymization bug in v1: synthetic codenames had
   also been substituted inside ordinary words across the whole dataset (e.g.
   «پیگیری» appeared as «پیدیبا»). v2 restores the ordinary words, gives every
   shop and owner a fresh codename, removes leftover personal names (customer
